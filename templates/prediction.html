@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Predictions - ShopEase</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <h2>ShopEase</h2>
+            <p>Welcome!</p>
+            <ul>
+                <li><a href="/dashboard">🏠 Dashboard</a></li>
+                <li><a href="/inventory">📦 Inventory (Sales)</a></li>
+                <li><a href="/stock">📊 Stock Management</a></li>
+                <li><a href="/analytics">📈 Analytics</a></li>
+                <li><a href="/prediction">🔮 Prediction</a></li>
+                <li><a href="/logout">🚪 Logout</a></li>
+            </ul>
+        </div>
+        
+        <div class="main-content">
+            <h1>🔮 Next Month Predictions</h1>
+            
+            <!-- Summary Cards -->
+            <div class="cards">
+                <div class="card">
+                    <h3>Predicted Monthly Sales</h3>
+                    <p class="big-number">{{ total_predicted|default(0) }} units</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Recommended Stock</h3>
+                    <p class="big-number">{{ total_recommended|default(0) }} units</p>
+                </div>
+                
+                <div class="card {% if total_recommended|default(0) > total_current|default(0) %}warning{% else %}success{% endif %}">
+                    <h3>Current Stock</h3>
+                    <p class="big-number">{{ total_current|default(0) }} units</p>
+                </div>
+            </div>
+            
+            <!-- Products Needing Restock -->
+            {% if need_restock and need_restock|length > 0 %}
+            <div class="restock-alert">
+                <h2>⚠️ Products Needing Restock</h2>
+                <div class="restock-grid">
+                    {% for product in need_restock %}
+                    <div class="restock-card">
+                        <h3>{{ product.product_name }}</h3>
+                        <p><strong>Current:</strong> {{ product.current_stock }} units</p>
+                        <p><strong>Recommended:</strong> {{ product.recommended_stock }} units</p>
+                        <p><strong>Need to order:</strong> {{ (product.recommended_stock - product.current_stock)|round }} units</p>
+                        <div class="progress-bar">
+                            <div class="progress" style="width: {{ (product.current_stock / product.recommended_stock * 100)|round }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- All Predictions -->
+            <h2>📋 All Products Prediction</h2>
+            {% if predictions and predictions|length > 0 %}
+            <div class="prediction-grid">
+                {% for pred in predictions %}
+                <div class="prediction-card">
+                    <div class="prediction-header">
+                        <h3>{{ pred.product_name }}</h3>
+                        <span class="confidence-badge {{ pred.confidence|lower }}">{{ pred.confidence }} Confidence</span>
+                    </div>
+                    
+                    <div class="trend-indicator">{{ pred.trend }}</div>
+                    
+                    <div class="prediction-details">
+                        <div class="detail-item">
+                            <span class="label">Current Stock:</span>
+                            <span class="value {% if pred.current_stock < pred.recommended_stock * 0.5 %}danger{% endif %}">
+                                {{ pred.current_stock }} units
+                            </span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="label">Avg Daily Sales:</span>
+                            <span class="value">{{ pred.avg_daily }} units</span>
+                        </div>
+                        
+                        <div class="detail-item highlight">
+                            <span class="label">📊 Predicted Monthly:</span>
+                            <span class="value">{{ pred.predicted_sales }} units</span>
+                        </div>
+                        
+                        <div class="detail-item highlight">
+                            <span class="label">📦 Recommended Stock:</span>
+                            <span class="value">{{ pred.recommended_stock }} units</span>
+                        </div>
+                        
+                        {% if pred.recommended_stock > pred.current_stock %}
+                        <div class="alert warning">
+                            ⚠️ Order {{ (pred.recommended_stock - pred.current_stock)|round }} more units
+                        </div>
+                        {% elif pred.current_stock > pred.recommended_stock * 1.5 %}
+                        <div class="alert info">
+                            ℹ️ Excess stock: {{ (pred.current_stock - pred.recommended_stock)|round }} units
+                        </div>
+                        {% else %}
+                        <div class="alert success">
+                            ✅ Stock level is optimal
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="no-data">No prediction data available. Add some sales first!</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <style>
+        /* Additional styles for prediction page */
+        .prediction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .confidence-badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .confidence-badge.high {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .confidence-badge.medium {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .confidence-badge.low {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .trend-indicator {
+            font-size: 14px;
+            margin-bottom: 10px;
+            padding: 5px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            text-align: center;
+        }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .detail-item.highlight {
+            background: #f0f4ff;
+            padding: 8px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .detail-item .label {
+            color: #666;
+        }
+        
+        .detail-item .value.danger {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #eee;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            height: 100%;
+            background: #667eea;
+            transition: width 0.3s;
+        }
+        
+        .restock-alert {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .restock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .restock-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .restock-card h3 {
+            color: #e74c3c;
+            margin-bottom: 10px;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            color: #666;
+            font-size: 16px;
+        }
+    </style>
+</body>
+</html>

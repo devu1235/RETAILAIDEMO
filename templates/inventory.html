@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sales Entry - ShopEase</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <h2>ShopEase</h2>
+            <p>Welcome!</p>
+            <ul>
+                <li><a href="/dashboard">🏠 Dashboard</a></li>
+                <li><a href="/inventory">📦 Inventory (Sales)</a></li>
+                <li><a href="/stock">📊 Stock Management</a></li>
+                <li><a href="/analytics">📈 Analytics</a></li>
+                <li><a href="/prediction">🔮 Prediction</a></li>
+                <li><a href="/logout">🚪 Logout</a></li>
+            </ul>
+        </div>
+        
+        <div class="main-content">
+            <h1>Daily Sales Entry</h1>
+            
+            <div class="two-column">
+                <div class="column">
+                    <h2>Add New Sale</h2>
+                    <form method="POST" action="/inventory" class="sale-form">
+                        <div class="form-group">
+                            <label>Select Product:</label>
+                            <select name="product_id" required>
+                                <option value="">Choose a product...</option>
+                                {% for product in products %}
+                                <option value="{{ product.id }}">
+                                    {{ product.name }} (Stock: {{ product.current_stock }} {{ product.unit }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Quantity Sold:</label>
+                            <input type="number" step="0.01" name="quantity" required>
+                        </div>
+                        
+                        <button type="submit" class="btn">Record Sale</button>
+                    </form>
+                </div>
+                
+                <div class="column">
+                    <h2>Today's Sales</h2>
+                    <table class="sales-table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Quantity</th>
+                                <th>Total</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sale in sales %}
+                            <tr>
+                                <td>{{ sale.product_name }}</td>
+                                <td>{{ sale.quantity }}</td>
+                                <td>₹{{ sale.total }}</td>
+                                <td>{{ sale.time }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

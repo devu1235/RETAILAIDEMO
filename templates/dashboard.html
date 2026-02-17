@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - ShopEase</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <h2>ShopEase</h2>
+            <p>Welcome, {{ username }}!</p>
+            <ul>
+                <li><a href="/dashboard">🏠 Dashboard</a></li>
+                <li><a href="/inventory">📦 Inventory (Sales)</a></li>
+                <li><a href="/stock">📊 Stock Management</a></li>
+                <li><a href="/analytics">📈 Analytics</a></li>
+                <li><a href="/prediction">🔮 Prediction</a></li>
+                <li><a href="/logout">🚪 Logout</a></li>
+            </ul>
+        </div>
+        
+        <div class="main-content">
+            <h1>Dashboard</h1>
+            
+            <div class="cards">
+                <div class="card">
+                    <h3>Today's Sales</h3>
+                    <p class="big-number">₹{{ total_today }}</p>
+                </div>
+                
+                <div class="card">
+                    <h3>Total Products</h3>
+                    <p class="big-number">{{ total_products }}</p>
+                </div>
+                
+                <div class="card warning">
+                    <h3>Low Stock Items</h3>
+                    <p class="big-number">{{ low_stock }}</p>
+                </div>
+            </div>
+            
+            <div class="quick-actions">
+                <h2>Quick Actions</h2>
+                <div class="action-buttons">
+                    <a href="/inventory" class="action-btn">➕ Add Sale</a>
+                    <a href="/stock" class="action-btn">📦 Add Stock</a>
+                    <a href="/analytics" class="action-btn">📊 View Reports</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
