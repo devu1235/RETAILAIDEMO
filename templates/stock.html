@@ -2,111 +2,79 @@
 <html>
 <head>
     <title>Stock Management - ShopEase</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="dashboard">
-        <aside class="sidebar">
+        <div class="sidebar">
             <h2>ShopEase</h2>
-            <p>Inventory Control</p>
+            <p>Welcome!</p>
             <ul>
-                <li><a href="/dashboard">Dashboard</a></li>
-                <li><a href="/inventory">Inventory (Sales)</a></li>
-                <li><a class="active" href="/stock">Stock Management</a></li>
-                <li><a href="/analytics">Analytics</a></li>
-                <li><a href="/prediction">Prediction</a></li>
-                <li><a href="/logout">Logout</a></li>
+                <li><a href="/dashboard">🏠 Dashboard</a></li>
+                <li><a href="/inventory">📦 Inventory (Sales)</a></li>
+                <li><a href="/stock">📊 Stock Management</a></li>
+                <li><a href="/analytics">📈 Analytics</a></li>
+                <li><a href="/prediction">🔮 Prediction</a></li>
+                <li><a href="/logout">🚪 Logout</a></li>
             </ul>
-        </aside>
-
-        <main class="main-content">
-            <div class="page-head">
-                <h1>Stock Management</h1>
-                <p>Add products, replenish stock, and track stock health.</p>
+        </div>
+        
+        <div class="main-content">
+            <h1>Stock Management</h1>
+            
+            <div class="tab-buttons">
+                <button onclick="showTab('add-product')" class="tab-btn active">Add New Product</button>
+                <button onclick="showTab('stock-in')" class="tab-btn">Add Stock</button>
+                <button onclick="showTab('current-stock')" class="tab-btn">Current Stock</button>
             </div>
             
-            {% if notice %}
-            <div class="alert" style="margin-bottom: 12px;">{{ notice }}</div>
-            {% endif %}
-
-            <form method="POST" action="/notifications/test" style="margin-bottom: 12px;">
-                <button type="submit" class="btn" style="width:auto;">Test Notification</button>
-            </form>
-
-            <section class="cards">
-                <div class="card">
-                    <h3>Total Products</h3>
-                    <p class="big-number">{{ products|length }}</p>
-                </div>
-                <div class="card warning">
-                    <h3>Low Stock Items</h3>
-                    <p class="big-number">{{ low_stock_products|length }}</p>
-                </div>
-                <div class="card">
-                    <h3>Inventory Value</h3>
-                    <p class="big-number">Rs. {{ "{:,.2f}".format(stock_value|default(0)|float) }}</p>
-                </div>
-                <div class="card">
-                    <h3>Recent Stock Entries</h3>
-                    <p class="big-number">{{ recent_stock|length }}</p>
-                </div>
-            </section>
-
-            <div class="tab-buttons">
-                <button onclick="showTab('add-product', this)" class="tab-btn active">Add Product</button>
-                <button onclick="showTab('stock-in', this)" class="tab-btn">Stock In</button>
-                <button onclick="showTab('current-stock', this)" class="tab-btn">Current Stock</button>
-                <button onclick="showTab('recent-stock', this)" class="tab-btn">Recent Entries</button>
-            </div>
-
-            <section id="add-product" class="tab-content active column">
+            <!-- Add New Product -->
+            <div id="add-product" class="tab-content active">
                 <h2>Add New Product</h2>
                 <form method="POST" action="/stock">
                     <input type="hidden" name="action" value="add_product">
-
+                    
                     <div class="form-group">
                         <label>Product Name:</label>
                         <input type="text" name="name" required>
                     </div>
-
+                    
                     <div class="form-group">
                         <label>Category:</label>
                         <select name="category">
                             <option value="Grocery">Grocery</option>
                             <option value="Dairy">Dairy</option>
                             <option value="Snacks">Snacks</option>
-                            <option value="Beverages">Beverages</option>
                             <option value="Personal Care">Personal Care</option>
-                            <option value="Household">Household</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
-
+                    
                     <div class="form-group">
-                        <label>Unit:</label>
+                        <label>Unit (kg, pieces, etc):</label>
                         <input type="text" name="unit" required>
                     </div>
-
+                    
                     <div class="form-group">
-                        <label>Selling Price (Rs.):</label>
-                        <input type="number" step="0.01" min="0" name="selling_price" required>
+                        <label>Selling Price (₹):</label>
+                        <input type="number" step="0.01" name="selling_price" required>
                     </div>
-
+                    
                     <div class="form-group">
-                        <label>Cost Price (Rs.):</label>
-                        <input type="number" step="0.01" min="0" name="cost_price" required>
+                        <label>Cost Price (₹):</label>
+                        <input type="number" step="0.01" name="cost_price" required>
                     </div>
-
+                    
                     <button type="submit" class="btn">Add Product</button>
                 </form>
-            </section>
-
-            <section id="stock-in" class="tab-content column">
+            </div>
+            
+            <!-- Add Stock -->
+            <div id="stock-in" class="tab-content">
                 <h2>Add Stock to Existing Product</h2>
                 <form method="POST" action="/stock">
                     <input type="hidden" name="action" value="stock_in">
-
+                    
                     <div class="form-group">
                         <label>Select Product:</label>
                         <select name="product_id" required>
@@ -116,30 +84,30 @@
                             {% endfor %}
                         </select>
                     </div>
-
+                    
                     <div class="form-group">
                         <label>Quantity to Add:</label>
-                        <input type="number" step="0.01" min="0.01" name="quantity" required>
+                        <input type="number" step="0.01" name="quantity" required>
                     </div>
-
+                    
                     <div class="form-group">
-                        <label>Cost Price per Unit:</label>
-                        <input type="number" step="0.01" min="0" name="cost_price" required>
+                        <label>Cost Price (per unit):</label>
+                        <input type="number" step="0.01" name="cost_price" required>
                     </div>
-
+                    
                     <button type="submit" class="btn">Add Stock</button>
                 </form>
-            </section>
-
-            <section id="current-stock" class="tab-content column table-wrap">
+            </div>
+            
+            <!-- Current Stock -->
+            <div id="current-stock" class="tab-content">
                 <h2>Current Stock Levels</h2>
-                {% if products %}
                 <table class="stock-table">
                     <thead>
                         <tr>
                             <th>Product</th>
                             <th>Category</th>
-                            <th>Stock</th>
+                            <th>Current Stock</th>
                             <th>Unit</th>
                             <th>Selling Price</th>
                             <th>Cost Price</th>
@@ -153,58 +121,40 @@
                             <td>{{ product.category }}</td>
                             <td>{{ product.current_stock }}</td>
                             <td>{{ product.unit }}</td>
-                            <td>Rs. {{ "{:,.2f}".format(product.selling_price|float) }}</td>
-                            <td>Rs. {{ "{:,.2f}".format(product.cost_price|float) }}</td>
+                            <td>₹{{ product.selling_price }}</td>
+                            <td>₹{{ product.cost_price }}</td>
                             <td>
-                                {% if product.current_stock < low_stock_threshold %}
+                                {% if product.current_stock < 10 %}
                                 <span class="badge danger">Low Stock</span>
                                 {% else %}
-                                <span class="badge success">Healthy</span>
+                                <span class="badge success">Good</span>
                                 {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-                {% else %}
-                <p class="no-data">No products available yet.</p>
-                {% endif %}
-            </section>
-
-            <section id="recent-stock" class="tab-content column table-wrap">
-                <h2>Recent Stock Entries</h2>
-                {% if recent_stock %}
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Product</th>
-                            <th>Quantity Added</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in recent_stock %}
-                        <tr>
-                            <td>{{ entry.product_name }}</td>
-                            <td>{{ entry.quantity }}</td>
-                            <td>{{ entry.date }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="no-data">No stock-in records available yet.</p>
-                {% endif %}
-            </section>
-        </main>
+            </div>
+        </div>
     </div>
-
+    
     <script>
-        function showTab(tabId, buttonEl) {
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        function showTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
             document.getElementById(tabId).classList.add('active');
-            buttonEl.classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
         }
     </script>
 </body>
