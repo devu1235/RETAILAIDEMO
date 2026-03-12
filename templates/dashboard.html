@@ -2,52 +2,108 @@
 <html>
 <head>
     <title>Dashboard - ShopEase</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="dashboard">
-        <div class="sidebar">
+        <aside class="sidebar">
             <h2>ShopEase</h2>
             <p>Welcome, {{ username }}!</p>
             <ul>
-                <li><a href="/dashboard">🏠 Dashboard</a></li>
-                <li><a href="/inventory">📦 Inventory (Sales)</a></li>
-                <li><a href="/stock">📊 Stock Management</a></li>
-                <li><a href="/analytics">📈 Analytics</a></li>
-                <li><a href="/prediction">🔮 Prediction</a></li>
-                <li><a href="/logout">🚪 Logout</a></li>
+                <li><a class="active" href="/dashboard">Dashboard</a></li>
+                <li><a href="/inventory">Inventory (Sales)</a></li>
+                <li><a href="/stock">Stock Management</a></li>
+                <li><a href="/analytics">Analytics</a></li>
+                <li><a href="/prediction">Prediction</a></li>
+                <li><a href="/logout">Logout</a></li>
             </ul>
-        </div>
-        
-        <div class="main-content">
-            <h1>Dashboard</h1>
-            
-            <div class="cards">
+        </aside>
+
+        <main class="main-content">
+            <div class="page-head">
+                <h1>Business Dashboard</h1>
+                <p>Track sales, inventory, and low-stock alerts in one place.</p>
+            </div>
+
+            <section class="cards">
                 <div class="card">
                     <h3>Today's Sales</h3>
-                    <p class="big-number">₹{{ total_today }}</p>
+                    <p class="big-number">Rs. {{ "{:,.0f}".format(total_today|default(0)|float) }}</p>
                 </div>
-                
+                <div class="card">
+                    <h3>This Month</h3>
+                    <p class="big-number">Rs. {{ "{:,.0f}".format(total_month|default(0)|float) }}</p>
+                </div>
                 <div class="card">
                     <h3>Total Products</h3>
                     <p class="big-number">{{ total_products }}</p>
                 </div>
-                
                 <div class="card warning">
                     <h3>Low Stock Items</h3>
                     <p class="big-number">{{ low_stock }}</p>
                 </div>
-            </div>
-            
-            <div class="quick-actions">
+                <div class="card">
+                    <h3>Inventory Value</h3>
+                    <p class="big-number">Rs. {{ "{:,.0f}".format(inventory_value|default(0)|float) }}</p>
+                </div>
+                <div class="card">
+                    <h3>Sales (Last 30 Days)</h3>
+                    <p class="big-number">{{ sales_30d|default(0) }}</p>
+                </div>
+                <div class="card">
+                    <h3>Active Days (30d)</h3>
+                    <p class="big-number">{{ active_days_30d|default(0) }}</p>
+                </div>
+                <div class="card">
+                    <h3>Latest Transaction</h3>
+                    <p class="big-number" style="font-size:18px;">
+                        {% if last_sale_ts %}
+                        {{ last_sale_ts.strftime('%d %b %Y %H:%M') }}
+                        {% else %}
+                        No data
+                        {% endif %}
+                    </p>
+                </div>
+            </section>
+
+            <section class="quick-actions">
                 <h2>Quick Actions</h2>
                 <div class="action-buttons">
-                    <a href="/inventory" class="action-btn">➕ Add Sale</a>
-                    <a href="/stock" class="action-btn">📦 Add Stock</a>
-                    <a href="/analytics" class="action-btn">📊 View Reports</a>
+                    <a href="/inventory" class="action-btn">Record Sale</a>
+                    <a href="/stock" class="action-btn">Add Stock</a>
+                    <a href="/prediction" class="action-btn">Check Forecast</a>
                 </div>
-            </div>
-        </div>
+            </section>
+
+            <section class="table-wrap" style="margin-top:20px;">
+                <h2>Recent Sales</h2>
+                {% if recent_sales %}
+                <table class="sales-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Qty</th>
+                            <th>Amount</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sale in recent_sales %}
+                        <tr>
+                            <td>{{ sale.product_name }}</td>
+                            <td>{{ sale.quantity }}</td>
+                            <td>Rs. {{ "{:,.2f}".format(sale.total|float) }}</td>
+                            <td>{{ sale.time }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="no-data">No sales recorded yet.</p>
+                {% endif %}
+            </section>
+        </main>
     </div>
 </body>
 </html>

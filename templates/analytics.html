@@ -9,7 +9,7 @@
 <body>
     <div class="dashboard">
         <div class="sidebar">
-            <h2>🛒 ShopEase</h2>
+            <h2>ShopEase</h2>
             <p>Welcome, {{ session['username'] }}!</p>
             <ul>
                 <li><a href="/dashboard"><i class="fas fa-home"></i> Dashboard</a></li>
@@ -247,7 +247,7 @@
             <div class="daily-table">
                 <div class="section-header">
                     <h2><i class="fas fa-clock"></i> Last 7 Days Performance</h2>
-                    <span class="badge info">Real-time data</span>
+                    <span class="badge info">{{ last_7_label|default('Real-time data') }}</span>
                 </div>
                 {% if last_7_days %}
                 <div class="table-responsive">
@@ -270,7 +270,7 @@
                                 <td class="date">{{ day.date }}</td>
                                 <td><span class="day-badge {{ day.day_name|lower }}">{{ day.day_name }}</span></td>
                                 <td class="text-center">{{ day.transactions }}</td>
-                                <td class="text-center">{{ day.items }}</td>
+                                <td class="text-center">{{ day['items'] }}</td>
                                 <td class="amount">₹{{ "{:,.0f}".format(day.revenue|float) }}</td>
                                 <td class="amount profit">₹{{ "{:,.0f}".format(day.profit|float) }}</td>
                                 <td>
@@ -846,3 +846,5 @@
     </script>
 </body>
 </html>
+
+

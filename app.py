@@ -4,6 +4,33 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, extract
 import calendar
 import math
+import numpy as np
+import os
+import smtplib
+import base64
+import urllib.parse
+import urllib.request
+from email.mime.text import MIMEText
+
+def load_dotenv_file(path='.env'):
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except Exception:
+        # If .env cannot be read, app should continue with existing environment.
+        pass
+
+load_dotenv_file()
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here-change-this'
@@ -47,9 +74,183 @@ class Sale(db.Model):
     date = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
+class LowStockAlert(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    last_sent_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_known_stock = db.Column(db.Float, nullable=False, default=0)
+
 # Create tables
 with app.app_context():
     db.create_all()
+
+LOW_STOCK_THRESHOLD = float(os.getenv('LOW_STOCK_THRESHOLD', '10'))
+LOW_STOCK_COOLDOWN_HOURS = int(os.getenv('LOW_STOCK_COOLDOWN_HOURS', '24'))
+LOW_STOCK_SMS_TO = os.getenv('LOW_STOCK_SMS_TO', '+917666150423')
+LOW_STOCK_WHATSAPP_TO = os.getenv('LOW_STOCK_WHATSAPP_TO', 'whatsapp:+917666150423')
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
+def _to_bool(value, default=False):
+    if value is None:
+        return default
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+def _send_email_alert(subject, body):
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    email_to = os.getenv('LOW_STOCK_EMAIL_TO')
+    email_from = os.getenv('LOW_STOCK_EMAIL_FROM') or smtp_user
+    use_tls = _to_bool(os.getenv('SMTP_USE_TLS', 'true'), True)
+
+    if not smtp_host or not email_to or not email_from:
+        return False
+
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = email_from
+    msg['To'] = email_to
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            if use_tls:
+                server.starttls()
+            if smtp_user and smtp_password:
+                server.login(smtp_user, smtp_password)
+            server.sendmail(email_from, [email_to], msg.as_string())
+        return True
+    except Exception:
+        return False
+
+def _send_twilio_message(body, to_number, from_number):
+    sid = os.getenv('TWILIO_ACCOUNT_SID')
+    token = os.getenv('TWILIO_AUTH_TOKEN')
+    if not sid or not token or not to_number or not from_number:
+        return False
+
+    endpoint = f'https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json'
+    payload = urllib.parse.urlencode({
+        'To': to_number,
+        'From': from_number,
+        'Body': body
+    }).encode('utf-8')
+    auth = base64.b64encode(f'{sid}:{token}'.encode('utf-8')).decode('ascii')
+
+    request = urllib.request.Request(endpoint, data=payload, method='POST')
+    request.add_header('Authorization', f'Basic {auth}')
+    request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+
+    try:
+        with urllib.request.urlopen(request, timeout=15):
+            return True
+    except Exception:
+        return False
+
+def _send_telegram_alert(body):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+
+    endpoint = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage'
+    payload = urllib.parse.urlencode({
+        'chat_id': TELEGRAM_CHAT_ID,
+        'text': body
+    }).encode('utf-8')
+    request = urllib.request.Request(endpoint, data=payload, method='POST')
+    request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+
+    try:
+        with urllib.request.urlopen(request, timeout=15):
+            return True
+    except Exception:
+        return False
+
+def _clear_low_stock_alert_state(user_id, product_id):
+    LowStockAlert.query.filter_by(user_id=user_id, product_id=product_id).delete()
+    db.session.commit()
+
+def maybe_send_low_stock_notification(product, user_id, trigger='stock_update'):
+    if product is None:
+        return
+
+    if product.current_stock is None:
+        return
+
+    if product.current_stock >= LOW_STOCK_THRESHOLD:
+        _clear_low_stock_alert_state(user_id, product.id)
+        return
+
+    now = datetime.utcnow()
+    alert = LowStockAlert.query.filter_by(user_id=user_id, product_id=product.id).first()
+
+    if alert and (now - alert.last_sent_at) < timedelta(hours=LOW_STOCK_COOLDOWN_HOURS):
+        # Avoid alert spam when stock is unchanged during cooldown.
+        if abs((alert.last_known_stock or 0) - product.current_stock) < 0.01:
+            return
+
+    subject = f'Low Stock Alert: {product.name}'
+    body = (
+        f'Low stock detected.\n'
+        f'Product: {product.name}\n'
+        f'Current stock: {product.current_stock} {product.unit or ""}\n'
+        f'Threshold: {LOW_STOCK_THRESHOLD}\n'
+        f'Trigger: {trigger}\n'
+        f'Time (UTC): {now.strftime("%Y-%m-%d %H:%M:%S")}\n'
+    )
+
+    # Email
+    _send_email_alert(subject, body)
+
+    # SMS
+    _send_twilio_message(
+        body=body,
+        to_number=LOW_STOCK_SMS_TO,
+        from_number=os.getenv('TWILIO_SMS_FROM')
+    )
+
+    # WhatsApp (Twilio sandbox/number format usually starts with whatsapp:)
+    _send_twilio_message(
+        body=body,
+        to_number=LOW_STOCK_WHATSAPP_TO,
+        from_number=os.getenv('TWILIO_WHATSAPP_FROM')
+    )
+
+    # Telegram
+    _send_telegram_alert(body)
+
+    if not alert:
+        alert = LowStockAlert(user_id=user_id, product_id=product.id)
+        db.session.add(alert)
+
+    alert.last_sent_at = now
+    alert.last_known_stock = product.current_stock
+    db.session.commit()
+
+def send_manual_notification_test(user_id):
+    user = User.query.get(user_id)
+    title = "ShopEase Notification Test"
+    body = (
+        "This is a manual notification test from ShopEase.\n"
+        f"User: {user.username if user else user_id}\n"
+        f"Time (UTC): {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    )
+
+    sent_any = False
+    sent_any = _send_email_alert(title, body) or sent_any
+    sent_any = _send_twilio_message(
+        body=body,
+        to_number=LOW_STOCK_SMS_TO,
+        from_number=os.getenv('TWILIO_SMS_FROM')
+    ) or sent_any
+    sent_any = _send_twilio_message(
+        body=body,
+        to_number=LOW_STOCK_WHATSAPP_TO,
+        from_number=os.getenv('TWILIO_WHATSAPP_FROM')
+    ) or sent_any
+    sent_any = _send_telegram_alert(body) or sent_any
+    return sent_any
 
 # Routes
 @app.route('/')
@@ -130,11 +331,32 @@ def dashboard():
     # Total products
     total_products = Product.query.filter_by(user_id=user_id).count()
     
-    # Low stock products (less than 10 items)
-    low_stock = Product.query.filter(
+    # Low stock products (less than threshold)
+    low_stock_products = Product.query.filter(
         Product.user_id == user_id,
-        Product.current_stock < 10
+        Product.current_stock < LOW_STOCK_THRESHOLD
+    ).all()
+    low_stock = len(low_stock_products)
+
+    # Trigger low-stock checks for existing items (cooldown-protected).
+    for low_product in low_stock_products:
+        maybe_send_low_stock_notification(low_product, user_id, trigger='dashboard_scan')
+    
+    inventory_value = db.session.query(
+        func.sum(Product.current_stock * Product.cost_price)
+    ).filter(
+        Product.user_id == user_id
+    ).scalar() or 0
+    
+    last_sale_ts = db.session.query(func.max(Sale.date)).filter(Sale.user_id == user_id).scalar()
+    sales_30d = Sale.query.filter(
+        Sale.user_id == user_id,
+        Sale.date >= (datetime.now() - timedelta(days=30))
     ).count()
+    active_days_30d = db.session.query(func.count(func.distinct(func.date(Sale.date)))).filter(
+        Sale.user_id == user_id,
+        Sale.date >= (datetime.now() - timedelta(days=30))
+    ).scalar() or 0
     
     # Recent sales for table
     recent_sales = Sale.query.filter_by(user_id=user_id).order_by(Sale.date.desc()).limit(5).all()
@@ -155,6 +377,10 @@ def dashboard():
                          total_month=total_month,
                          total_products=total_products,
                          low_stock=low_stock,
+                         inventory_value=inventory_value,
+                         last_sale_ts=last_sale_ts,
+                         sales_30d=sales_30d,
+                         active_days_30d=active_days_30d,
                          recent_sales=recent_sales_data)
 
 # ============= INVENTORY (SALES ENTRY) =============
@@ -167,9 +393,17 @@ def inventory():
     
     if request.method == 'POST':
         product_id = request.form['product_id']
-        quantity = float(request.form['quantity'])
+        try:
+            quantity = float(request.form['quantity'])
+        except (TypeError, ValueError):
+            return "Invalid quantity"
         
-        product = Product.query.get(product_id)
+        if quantity <= 0:
+            return "Quantity must be greater than 0"
+        
+        product = Product.query.filter_by(id=product_id, user_id=user_id).first()
+        if not product:
+            return "Invalid product selected"
         
         if product.current_stock >= quantity:
             total = quantity * product.selling_price
@@ -186,6 +420,7 @@ def inventory():
             
             db.session.add(sale)
             db.session.commit()
+            maybe_send_low_stock_notification(product, user_id, trigger='sale')
             
             return redirect('/inventory')
         else:
@@ -211,9 +446,14 @@ def inventory():
             'time': sale.date.strftime('%H:%M')
         })
     
+    today_total = sum(s["total"] for s in sales_with_names)
+    today_items = sum(s["quantity"] for s in sales_with_names)
+    
     return render_template('inventory.html', 
                          products=products,
-                         sales=sales_with_names)
+                         sales=sales_with_names,
+                         today_total=today_total,
+                         today_items=today_items)
 
 # ============= STOCK MANAGEMENT =============
 @app.route('/stock', methods=['GET', 'POST'])
@@ -230,8 +470,16 @@ def stock():
             name = request.form['name']
             category = request.form['category']
             unit = request.form['unit']
-            selling_price = float(request.form['selling_price'])
-            cost_price = float(request.form['cost_price'])
+            try:
+                selling_price = float(request.form['selling_price'])
+                cost_price = float(request.form['cost_price'])
+            except (TypeError, ValueError):
+                return "Invalid price values"
+            
+            if not name.strip():
+                return "Product name is required"
+            if selling_price < 0 or cost_price < 0:
+                return "Prices cannot be negative"
             
             new_product = Product(
                 name=name,
@@ -247,10 +495,20 @@ def stock():
             
         elif action == 'stock_in':
             product_id = request.form['product_id']
-            quantity = float(request.form['quantity'])
-            cost_price = float(request.form['cost_price'])
+            try:
+                quantity = float(request.form['quantity'])
+                cost_price = float(request.form['cost_price'])
+            except (TypeError, ValueError):
+                return "Invalid quantity or cost price"
             
-            product = Product.query.get(product_id)
+            if quantity <= 0:
+                return "Quantity must be greater than 0"
+            if cost_price < 0:
+                return "Cost price cannot be negative"
+            
+            product = Product.query.filter_by(id=product_id, user_id=user_id).first()
+            if not product:
+                return "Invalid product selected"
             product.current_stock += quantity
             
             stock_entry = StockIn(
@@ -261,6 +519,7 @@ def stock():
             )
             db.session.add(stock_entry)
             db.session.commit()
+            maybe_send_low_stock_notification(product, user_id, trigger='stock_in')
     
     # Get all products
     products = Product.query.filter_by(user_id=user_id).all()
@@ -277,9 +536,37 @@ def stock():
             'date': entry.date.strftime('%Y-%m-%d %H:%M')
         })
     
+    low_stock_products = Product.query.filter(
+        Product.user_id == user_id,
+        Product.current_stock < LOW_STOCK_THRESHOLD
+    ).all()
+    stock_value = db.session.query(
+        func.sum(Product.current_stock * Product.cost_price)
+    ).filter(
+        Product.user_id == user_id
+    ).scalar() or 0
+    
     return render_template('stock.html', 
                          products=products,
-                         recent_stock=stock_with_names)
+                         recent_stock=stock_with_names,
+                         low_stock_products=low_stock_products,
+                         stock_value=stock_value,
+                         low_stock_threshold=LOW_STOCK_THRESHOLD,
+                         notice=request.args.get('notice'))
+
+@app.route('/notifications/test', methods=['POST'])
+def notifications_test():
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    user_id = session['user_id']
+    sent_any = send_manual_notification_test(user_id)
+    notice = (
+        "Test notification sent. Check Telegram/SMS/Email channels."
+        if sent_any
+        else "No notification provider is configured. Please set Telegram/Email/SMS credentials."
+    )
+    return redirect(url_for('stock', notice=notice))
 
 @app.route('/analytics')
 def analytics():
@@ -432,27 +719,42 @@ def analytics():
     
     # ===== LAST 7 DAYS DETAILS =====
     last_7_days = []
-    
+    last_7_label = "Real-time data"
+
+    # Use current date by default, but if there are no sales in the current 7-day window,
+    # fall back to the most recent day that has sales so analytics stays meaningful.
+    anchor_date = now
+    recent_7d_sales_count = Sale.query.filter(
+        Sale.user_id == user_id,
+        Sale.date >= (now - timedelta(days=6))
+    ).count()
+
+    if recent_7d_sales_count == 0:
+        latest_sale = Sale.query.filter_by(user_id=user_id).order_by(Sale.date.desc()).first()
+        if latest_sale:
+            anchor_date = latest_sale.date
+            last_7_label = f"Latest sales window (ending {anchor_date.strftime('%d %b %Y')})"
+
     for i in range(6, -1, -1):
-        date = now - timedelta(days=i)
+        date = anchor_date - timedelta(days=i)
         date_str = date.strftime('%Y-%m-%d')
-        
+
         day_sales = Sale.query.filter(
             func.date(Sale.date) == date_str,
             Sale.user_id == user_id
         ).all()
-        
+
         if day_sales:
             transactions = len(day_sales)
             items = sum(s.quantity for s in day_sales)
             revenue = sum(s.total_amount for s in day_sales)
-            
+
             profit = 0
             for sale in day_sales:
                 product = Product.query.get(sale.product_id)
                 if product:
                     profit += sale.quantity * (product.selling_price - product.cost_price)
-            
+
             margin = round((profit / revenue * 100) if revenue > 0 else 0, 1)
         else:
             transactions = 0
@@ -460,7 +762,7 @@ def analytics():
             revenue = 0
             profit = 0
             margin = 0
-        
+
         last_7_days.append({
             'date': date.strftime('%d %b'),
             'day_name': date.strftime('%A'),
@@ -571,6 +873,7 @@ def analytics():
                          weekday_analysis=weekday_analysis,
                          top_products=top_products,
                          last_7_days=last_7_days,
+                         last_7_label=last_7_label,
                          category_data=category_data,
                          months_data=months_data,
                          
@@ -603,6 +906,7 @@ def prediction():
         # Get last 90 days sales
         sales_90d = Sale.query.filter(
             Sale.product_id == product.id,
+            Sale.user_id == user_id,
             Sale.date >= ninety_days_ago
         ).order_by(Sale.date).all()
         
@@ -632,20 +936,20 @@ def prediction():
             # Calculate 7-day moving average for trend
             moving_avg = sum(sales_values[-7:]) / 7
             previous_avg = sum(sales_values[-14:-7]) / 7 if len(sales_values) > 14 else moving_avg
-            
+
             # Determine trend
             if moving_avg > previous_avg * 1.1:
-                trend = '📈 Increasing'
+                trend = 'Increasing'
                 trend_factor = 1.2
             elif moving_avg < previous_avg * 0.9:
-                trend = '📉 Decreasing'
+                trend = 'Decreasing'
                 trend_factor = 0.8
             else:
-                trend = '➡️ Stable'
+                trend = 'Stable'
                 trend_factor = 1.0
         else:
             moving_avg = sum(sales_values) / len(sales_values) if sales_values else 0
-            trend = '📊 Limited data'
+            trend = 'Limited data'
             trend_factor = 1.0
         
         # Calculate average daily sales
@@ -655,6 +959,7 @@ def prediction():
         current_month = datetime.now().month
         last_year_sales = Sale.query.filter(
             Sale.product_id == product.id,
+            Sale.user_id == user_id,
             extract('month', Sale.date) == current_month,
             extract('year', Sale.date) == (datetime.now().year - 1)
         ).all()
@@ -722,7 +1027,6 @@ def prediction():
                          total_recommended=round(total_recommended_stock, 1),
                          total_current=round(total_current_stock, 1))
 
-# Add numpy import for prediction
-import numpy as np
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+

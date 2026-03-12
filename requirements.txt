@@ -1,6 +1,6 @@
 flask
+flask-sqlalchemy
+sqlalchemy
 gunicorn
 numpy
 pandas
-scikit-learn
-xgboost

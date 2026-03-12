@@ -2,28 +2,47 @@
 <html>
 <head>
     <title>Sales Entry - ShopEase</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="dashboard">
-        <div class="sidebar">
+        <aside class="sidebar">
             <h2>ShopEase</h2>
-            <p>Welcome!</p>
+            <p>Sales Operations</p>
             <ul>
-                <li><a href="/dashboard">🏠 Dashboard</a></li>
-                <li><a href="/inventory">📦 Inventory (Sales)</a></li>
-                <li><a href="/stock">📊 Stock Management</a></li>
-                <li><a href="/analytics">📈 Analytics</a></li>
-                <li><a href="/prediction">🔮 Prediction</a></li>
-                <li><a href="/logout">🚪 Logout</a></li>
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a class="active" href="/inventory">Inventory (Sales)</a></li>
+                <li><a href="/stock">Stock Management</a></li>
+                <li><a href="/analytics">Analytics</a></li>
+                <li><a href="/prediction">Prediction</a></li>
+                <li><a href="/logout">Logout</a></li>
             </ul>
-        </div>
-        
-        <div class="main-content">
-            <h1>Daily Sales Entry</h1>
-            
+        </aside>
+
+        <main class="main-content">
+            <div class="page-head">
+                <h1>Daily Sales Entry</h1>
+                <p>Record each sale and monitor today's performance in real time.</p>
+            </div>
+
+            <section class="cards">
+                <div class="card">
+                    <h3>Today's Revenue</h3>
+                    <p class="big-number">Rs. {{ "{:,.2f}".format(today_total|default(0)|float) }}</p>
+                </div>
+                <div class="card">
+                    <h3>Items Sold Today</h3>
+                    <p class="big-number">{{ "{:,.2f}".format(today_items|default(0)|float) }}</p>
+                </div>
+                <div class="card">
+                    <h3>Total Transactions</h3>
+                    <p class="big-number">{{ sales|length }}</p>
+                </div>
+            </section>
+
             <div class="two-column">
-                <div class="column">
+                <section class="column">
                     <h2>Add New Sale</h2>
                     <form method="POST" action="/inventory" class="sale-form">
                         <div class="form-group">
@@ -31,25 +50,27 @@
                             <select name="product_id" required>
                                 <option value="">Choose a product...</option>
                                 {% for product in products %}
-                                <option value="{{ product.id }}">
-                                    {{ product.name }} (Stock: {{ product.current_stock }} {{ product.unit }})
-                                </option>
+                                <option value="{{ product.id }}">{{ product.name }} (Stock: {{ product.current_stock }} {{ product.unit }})</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label>Quantity Sold:</label>
-                            <input type="number" step="0.01" name="quantity" required>
+                            <input type="number" step="0.01" min="0.01" name="quantity" required>
                         </div>
-                        
+
                         <button type="submit" class="btn">Record Sale</button>
                     </form>
-                </div>
-                
-                <div class="column">
-                    <h2>Today's Sales</h2>
-                    <table class="sales-table">
+                </section>
+
+                <section class="column table-wrap">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <h2>Today's Sales</h2>
+                        <input id="salesFilter" type="text" placeholder="Search product..." style="max-width:220px;" />
+                    </div>
+                    {% if sales %}
+                    <table class="sales-table" id="salesTable">
                         <thead>
                             <tr>
                                 <th>Product</th>
@@ -63,15 +84,32 @@
                             <tr>
                                 <td>{{ sale.product_name }}</td>
                                 <td>{{ sale.quantity }}</td>
-                                <td>₹{{ sale.total }}</td>
+                                <td>Rs. {{ "{:,.2f}".format(sale.total|float) }}</td>
                                 <td>{{ sale.time }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
-                </div>
+                    {% else %}
+                    <p class="no-data">No sales recorded today.</p>
+                    {% endif %}
+                </section>
             </div>
-        </div>
+        </main>
     </div>
+
+    <script>
+        const filterInput = document.getElementById('salesFilter');
+        const table = document.getElementById('salesTable');
+        if (filterInput && table) {
+            filterInput.addEventListener('input', function () {
+                const q = this.value.trim().toLowerCase();
+                table.querySelectorAll('tbody tr').forEach((row) => {
+                    const name = row.children[0].innerText.toLowerCase();
+                    row.style.display = name.includes(q) ? '' : 'none';
+                });
+            });
+        }
+    </script>
 </body>
 </html>
